@@ -40,35 +40,24 @@ class RipartoSpinelli:
     @staticmethod
     def extract_title(input_file, number = 89):
         """
-        Estrae una stringa di titolo formattata dal nome del file di input.
-        Esempio: 'SP-3G12.IN' con number=89 -> 'Spinello 3g12 raff. pri89'
+        Extracts a formatted title string from the input file name.
+        Example: 'SP-3G12.IN' with number=89 -> 'Spinello 3g12 raff. pri89'
         """
         fname = os.path.basename(input_file)
         fname_no_ext = os.path.splitext(fname)[0]
         match = re.search(r'(\d+[A-Z]+\d*)', fname_no_ext)
         code = match.group(0) if match else ""
         return f"Spinello {code.lower()} raff. pri{number}"
-    
-    @staticmethod
-    def prepare_input_file(input_file):
-        """
-        Prepara il file di input per assicurarsi che abbia il formato corretto
-        per essere letto dalla funzione FCN.
-        """
-        with open(input_file, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        new_lines = lines[:1] + lines[17:]
-        # IMPORTANTE: linee da 2 a 17 rimosse, rispettare il formato del file di input
-        with open(input_file, "w", encoding="utf-8") as f:
-            f.writelines(new_lines)
 
 
     def FCN(self, X, IFLAG, input_file, dis_file):
+
+        
         if IFLAG == 1:
-            # --- Lettura file di input ---
+            # --- Step 1: Read input file ---
             with open(input_file, 'r') as fin:
                 lines = fin.readlines()
-            # Trova la riga IXN e analizza i parametri
+            # Find IXN line and parse parameters
             # ixn_line = [l for l in lines if 'IXN' in l]
             # ixn_idx = lines.index(ixn_line[0])
             self.IXN, self.TOL, self.INOR, self.TTT, self.PPP = map(float, lines[1].split())
@@ -88,7 +77,7 @@ class RipartoSpinelli:
             self.cation_names = lines[3].split()
             self.K9 = len(self.cation_names)
 
-            # --- Lettura file DIS ---
+            # --- Step 2: Read DIS file ---
             with open(dis_file, 'r') as fdis:
                 dis_lines = fdis.readlines()
             self.dis_names = dis_lines[0].split()
@@ -110,27 +99,29 @@ class RipartoSpinelli:
             self.IMINU = int(dis_lines[12].split()[0])
             print(' iminu=', self.IMINU)
 
-                    # --- Logica principale di calcolo ---
-        # Compila i valori mancanti di dDTdt e dDMdt usando il metodo di Hazen & Prewitt
+                    # --- Step 3: Main calculation logic (translated) ---
+        # Fill missing dDTdt and dDMdt using Hazen & Prewitt
             for j in range(self.K7):
                 if self.dDTdt[j] < 1e-8 and self.VALENZ[j] > 0.1:
-                  
+                    # 4.0 is the coordination number
                     self.ALFAT = self.COST1T * (self.COST2T - self.VALENZ[j]/4.0) * 1e-6
                     if self.ALFAT <= 0.0:
                         self.ALFAT = 0.0
-                    self.dDTdt[j] = self.ALFAT * self.DDT[j] # applica correzione alla distanza
+                    self.dDTdt[j] = self.ALFAT * self.DDT[j] # apply correction to the distance
 
                 if self.dDMdt[j] < 1e-8 and self.VALENZ[j] > 0.1:
                     self.ALFAM = self.COST1T * (self.COST2T - self.VALENZ[j]/6.0) * 1e-6
-                    self.dDMdt[j] = self.ALFAM * self.DDM[j] # applica correzione alla distanza
+                    self.dDMdt[j] = self.ALFAM * self.DDM[j] # apply correction to the distance
+
                 if self.dDTdp[j] < 1e-8 and self.VALENZ[j] > 0.1:
                     self.BETAT = 37.0 * (self.DDT[j]**3 / self.VALENZ[j]) * 1e-5
-                    self.dDTdp[j] = self.BETAT * self.DDT[j] # applica correzione alla pressione
+                    self.dDTdp[j] = self.BETAT * self.DDT[j] # correction for pressure
 
                 if self.dDMdp[j] < 1e-8 and self.VALENZ[j] > 0.1:
                     self.BETAM = 37.0 * (self.DDM[j]**3 / self.VALENZ[j]) * 1e-5
-                    self.dDMdp[j] = self.BETAM * self.DDM[j] # applica correzione alla pressione
-            self.DDT = self.DDT - self.DELTAP * self.dDTdp + self.DELTAT * self.dDTdt # distanze ricalcolate
+                    self.dDMdp[j] = self.BETAM * self.DDM[j] # correction for pressure
+
+            self.DDT = self.DDT - self.DELTAP * self.dDTdp + self.DELTAT * self.dDTdt # recomputed distances
             self.DDM = self.DDM - self.DELTAP * self.dDMdp + self.DELTAT * self.dDMdt
             self.IOP1 = 0
             self.IOP2 = 0
@@ -158,9 +149,9 @@ class RipartoSpinelli:
                 if ih == 0:
                     raise RuntimeError(f" CATIONE {self.cation_names[i]} NON TROVATO IN FILE DISTANZE")
 
-            # Lettura array AT e ERR
+            # Read AT and ERR arrays
            # at_idx = [i for i, l in enumerate(lines) if l.strip().startswith('Al3+')][0] + 1
-            self.AT = np.array([float(x) for x in lines[4].split()])  # ripartizioni "bulk"
+            self.AT = np.array([float(x) for x in lines[4].split()]) # 'bulk' occupancies
             print("AT occupancies:", *self.AT[:self.K9])
             self.ERR = np.array([float(x) for x in lines[5].split()])
             print("ERR occupancies:", *self.ERR[:self.K9])
@@ -207,8 +198,8 @@ class RipartoSpinelli:
             if abs(CARICA - 8.0) >= 0.001:
                 print(f"LE CARICHE CHIUDONO A {CARICA}")
 
-            # usando dati neutronici (non raggi X/ dati elettronici),
-            # quindi i conteggi elettronici non sono aggiustati
+            # using neutron data (not X ray/ electronic data),
+            # so the electron counts are not adjusted
             if self.IXN == 2:
                 self.ET0 = self.ET
                 self.EM0 = self.EM
@@ -224,14 +215,14 @@ class RipartoSpinelli:
                     self.EM += FATT * self.EM
             self.DTO = self.A * np.sqrt(3.0 * (0.125 - self.U) ** 2)
             self.DMO = self.A * np.sqrt((0.5 - self.U) ** 2 + 2.0 * (0.25 - self.U) ** 2)
-            self.DER1 = np.sqrt(3.0 * (0.125 - self.U) ** 2) # derivata parziale di DTO rispetto ad A
-            self.DER2 = (self.A * np.sqrt(3) * (-0.25 + 2 * self.U)) / (2.0 * np.sqrt(3.0 * (0.125 - self.U) ** 2)) # derivata parziale di DTO rispetto ad U
+            self.DER1 = np.sqrt(3.0 * (0.125 - self.U) ** 2) # partial derivative of DTO w.r.t. A
+            self.DER2 = (self.A * np.sqrt(3) * (-0.25 + 2 * self.U)) / (2.0 * np.sqrt(3.0 * (0.125 - self.U) ** 2)) # partial derivative of DMO w.r.t. U
             self.SIGTO = np.sqrt(self.DER1 ** 2 * self.SIGA ** 2 + self.DER2 ** 2 * self.SIGU ** 2)
-            #Incertezza combinata su DTO, propagata dalle incertezze su A e U usando la propagazione standard dell'errore.       
-            self.DER3 = np.sqrt((0.5 - self.U) ** 2 + 2.0 * (0.25 - self.U) ** 2) # derivata parziale di DMO rispetto ad A
-            self.DER4 = (self.A * (6.0 * self.U - 2.0)) / (2.0 * np.sqrt((0.5 - self.U) ** 2 + 2.0 * (0.25 - self.U) ** 2)) # derivata parziale di DMO rispetto ad U
+            #Combined uncertainty on DTO, propagated from uncertainties in A and U using standard error propagation.       
+            self.DER3 = np.sqrt((0.5 - self.U) ** 2 + 2.0 * (0.25 - self.U) ** 2) # partial derivative of DMO w.r.t. A
+            self.DER4 = (self.A * (6.0 * self.U - 2.0)) / (2.0 * np.sqrt((0.5 - self.U) ** 2 + 2.0 * (0.25 - self.U) ** 2)) # partial derivative of DMO w.r.t. U
             self.SIGMO = np.sqrt(self.DER3 ** 2 * self.SIGA ** 2 + self.DER4 ** 2 * self.SIGU ** 2)
-            # Incertezza combinata su DMO, propagata dalle incertezze su A e U.
+            # Combined uncertainty on DMO, propagated from uncertainties in A and U.
         # DISTANCE FILE WINS OVER INPUT FILE
         # If the DIS file provides a non-negligible value for SIGMAA or SIGMAU, 
         # use it to override the input file's error on a and u.
@@ -246,49 +237,49 @@ class RipartoSpinelli:
 
 
     def calc_res(self, X, IFLAG, input_file):
-            # --- Calcolo residui ---
-            SC = np.zeros(8)  # questo conterrà i residui principali
-            # differenze tra i valori calcolati e quelli attesi
-            # per varie grandezze
+            # --- Section: Calculate residuals (lines 285-420) ---
+            SC = np.zeros(8) # this will store the main residuals
+        # differences between calculated and expected values
+        # for various constants
 
-        # eM (elettroni nel sito M)
-        # X è l'array delle ripartizioni dei siti cationici ottimizzate.
+        # eM (electrons in M site)
+        # X is the array of cation site occupancies being optimized.
             EEM = np.sum(X[self.K9:self.K9*2] * self.ELET[:self.K9])
             SC[0] = EEM - 2.0 * self.EM
 
-        # Carica di M (QQM) e occupazione di M (OCM)
+        # Charge of M (QQM) and occupancy of M (OCM)
             QQM = np.sum(X[self.K9:self.K9*2] * self.VALE[:self.K9])
             OCM = np.sum(X[self.K9:self.K9*2])
             SC[1] = OCM - 2.0
 
-        # eT (elettroni nel sito T)
+        # eT (electrons in T site)
             EET = np.sum(X[:self.K9] * self.ELET[:self.K9])
             SC[2] = EET - self.ET
 
-        # Carica di T (QQT) e occupazione di T (OCT)
+        # Charge of T (QQT) and occupancy of T (OCT)
             QQT = np.sum(X[:self.K9] * self.VALE[:self.K9])
             OCT = np.sum(X[:self.K9])
             SC[3] = OCT - 1.0
 
-        # Calcola DTCAL (distanza T-O, inclusa la contribuzione del sito M)
+        # Calculate DTCAL (T-O distance, including M-site contribution)
             DTCAL = np.sum(X[:self.K9] * self.DT[:self.K9]) # average T-O distance 
             DTCAL += np.sum(X[self.K9:self.K9*2] * self.CDT[:self.K9]) # average T-O distance with M-site corrective contribution 
 
-        # Calcola DMCAL (distanza M-O, inclusa la logica Fe2.5+)
+        # Calculate DMCAL (M-O distance, including Fe2.5+ logic)
             DMCAL = 0.0
             FE25M = 0.0
 
-        # Logica Fe2.5+ (Marshall & Dollase electron hopping)
-        #Scopo: Se sia Fe2+ che 
-        # Fe3+ sono presenti nel sito M 
-        # (sito ottaedrico) e le loro ripartizioni
-        # sono simili (entro una tolleranza TOL), 
-        # vengono combinati in Fe2.5+ (rappresentando
-        #  il salto elettronico). Come:
-        # Se la loro differenza è piccola,
-        # combina tutto in Fe2.5+ e imposta le ripartizioni di Fe2+ e Fe3+ a zero.
-        # Altrimenti, combina il più possibile in Fe2.5+,
-        # lasciando il resto come Fe2+ o Fe3+.
+        # Fe2.5+ Logic (Marshall & Dollase electron hopping)
+        #Purpose: If both Fe2+ and 
+        # Fe3+ are present in the M site 
+        # (octahedral site) and their occupancies 
+        # are similar (within a tolerance TOL), 
+        # they are combined into Fe2.5+ (representing
+        #  electron hopping). How:
+        #   If their difference is small, 
+        #combine all into Fe2.5+ and set Fe2+ and Fe3+ occupancies to zero.
+        # If not, combine as much as possible into Fe2.5+, 
+        # leaving the remainder as either Fe2+ or Fe3+.
             if self.TOL <= 90.0 and self.IOP1 > 0 and self.IOP2 > 0 and X[self.IOP1+self.K9] > 0.1 and X[self.IOP2+self.K9] > 0.1:
                 FEM = X[self.IOP1+self.K9] + X[self.IOP2+self.K9]
                 SALV1 = X[self.IOP1+self.K9]
@@ -310,25 +301,26 @@ class RipartoSpinelli:
             DMCAL = np.sum(X[self.K9:self.K9*2] * self.DM[:self.K9])
 
             if FE25M >= 0.001:
-                X[self.IOP1+self.K9] = SALV1 
+                X[self.IOP1+self.K9] = SALV1 #they were set to zero above
                 X[self.IOP2+self.K9] = SALV2
 
-            DMCAL += FE25M * self.DDM[14] 
-            DMCAL += np.sum(X[:self.K9] * self.CDM[:self.K9]) # distanza media M-O con contributo correttivo del sito T
-            DMCAL /= 2.0 # distanza media M-O (poiché ci sono due siti M per unità formula nel spinello)
+            DMCAL += FE25M * self.DDM[14] #TO DO: save the index and use it instead of hardcoding 14
 
-        # Calcola AO e UC
+            DMCAL += np.sum(X[:self.K9] * self.CDM[:self.K9]) # average M-O distance with T-site corrective contribution
+            DMCAL /= 2.0 # average M-O distance (since M there are two M sites per formula unit in spinel)
+
+        # Calculate AO and UC
             RADI = 33.0 * DMCAL ** 2 - 8.0 * DTCAL ** 2
             SC[4] = 0.0
 
             if RADI >= 0.0:
                 AO = (np.sqrt(RADI) + 5.0 * DTCAL) * 0.4198911
-                # Il fattore 0.4198911 converte questa somma nella lunghezza del lato della cella (Ångström).
+                # The factor 0.4198911 converts this sum to the cell edge length (Ångström).
                 SC[4] = AO - self.A
 
             if abs(DTCAL - DMCAL) < 1e-6:
-                UC = 0.2625 # impostalo a un valore predefinito
-            # che è tipico per spinelli normali
+                UC = 0.2625 # set it to a default value
+            # which is typical for normal spinels
             # R = (DMCAL/DTCAL)**2 = 1
             else:
                 R = (DMCAL ** 2) / (DTCAL ** 2)
@@ -338,27 +330,28 @@ class RipartoSpinelli:
                     RQ = 0.0
                 UC = (0.75 * R - 2.0 + np.sqrt(RQ)) / (6.0 * R - 6.0)
             SC[5] = UC - self.U
-        # UC : parametro posizionale dell'ossigeno previsto dal modello
+        # UC : model-predicted oxygen positional parameter
 
-        # Calcola i residui DTCAL e DMCAL
-        # Calcola ATT, CARIC, SC[7], SC[8] e F
-        # Calcola ATT (somma dei siti T e M per ogni catione)
+        # Calculate DTCAL and DMCAL residuals
+        # --- Translation of RIPANTO.FOR lines 421-698 ---
+        # Calculate ATT, CARIC, SC[7], SC[8], and F
+        # Calculate ATT (sum of T and M site for each cation)
             ATT = X[:self.K9] + X[self.K9:self.K9*2]
-        # aka occupazione totale di ogni catione
+        # aka total occupancy of each cation
 
-        # Calcola la carica totale
+        # Calculate total charge
             CARIC = np.sum(self.VALE[:self.K9] * ATT)
             SC[6] = CARIC - 8.0
 
-        # Calcola il residuo chi-quadro per la distribuzione dei cationi
+        # Calculate chi-square residual for cation distribution
             SC[7] = 0.0
             for K in range(self.K9):
                 if self.ERR[K] < 1e-9:
                     self.ERR[K] = 0.0010
-                SC[7] += ((self.AT[K] - ATT[K]) / self.ERR[K]) ** 2 # AT è fornito come input dai dati XRAY
-            # mentre ATT è calcolato dalle occupazioni X che vogliamo ottimizzare
+                SC[7] += ((self.AT[K] - ATT[K]) / self.ERR[K]) ** 2 # AT is given as input from XRAY data
+            # while ATT is calculated from the occupancies X that we want to optimize
 
-# Calcola la funzione obiettivo F
+# Calculate objective function F
             if self.SIGEM < 1e-8:
                 SCAR1 = 0.0
             else:
@@ -380,21 +373,21 @@ class RipartoSpinelli:
             + SC[7]
             )
             F = F / (7.0 + self.KAT)
-# Qui puoi implementare la scrittura su file e l'output formattato, se necessario.
-          # --- Passo 5: Output fedele in stile Fortran (caso IFLAG == 3) ---
+# You can implement file writing and formatted output here if needed.
+          # --- Step 5: Faithful Fortran-style file output (IFLAG == 3 case) ---
             if IFLAG == 3:
-            # 2. ARCHI.AGG: aggiungi in coda
+            # 2. ARCHI.AGG append at end (simulate BACKSPACE)
                 SUMAT = np.sum(self.AT)
                 SUMATT = np.sum(ATT)
                 foutname = os.path.basename(input_file)
                 foutname_no_ext = os.path.splitext(foutname)[0]
-                
-                with open(foutname_no_ext + ".OUT", "a") as f17:
+                # 1. RIP99A.OUT append at end (simulate BACKSPACE)
+                with open(foutname_no_ext + ".OUT", "a+") as f17:
                     f17.write("*******************************************************\n")
                     f17.write(f"{self.title}\n")
                     f17.write(f"F(Xi)={F:10.3e} Norm. e-: {self.INOR}  TOLL% HOP={self.TOL:6.2f}  T°C {self.TTT:5.0f}  PS(GPa) {self.PPP:10.4f}\n")
                     if self.IXN == 1:
-                        f17.write(f"         e-T    e-M    A0        u        T-O     M-O       e-X     e-chim\n")
+                        f17.write(f"  e-T    e-M    A0        u        T-O     M-O       e-X     e-chim\n")
                         f17.write(f"OBS {self.ET0:7.3f} {self.EM0:7.3f} {self.A:9.5f} {self.U:10.6f} {self.DTO:8.4f} {self.DMO:8.4f} {self.ET+2*self.EM:9.3f} {self.ELCHIM:9.3f}\n")
                     elif self.IXN == 2:
                         f17.write(f"  BCT    BCM    A0        u        T-O     M-O\n")
@@ -404,29 +397,27 @@ class RipartoSpinelli:
                     f17.write(f"SC  {EET-self.ET:7.3f} {EEM/2.0-self.EM:7.3f} {AO-self.A:9.5f} {UC-self.U:10.6f} {DTCAL-self.DTO:8.4f} {DMCAL-self.DMO:8.4f}   CARICA   {SC[6]:8.4f}\n")
                     ERT = np.sqrt((X[:self.K9] / ATT[:self.K9]) * self.ERR[:self.K9] ** 2)
                     ERM = np.sqrt((X[self.K9:self.K9*2] / ATT[:self.K9]) * self.ERR[:self.K9] ** 2)
-                    # ripartizioni T-site
-                    f17.write("    " + " ".join(f"{name:7s}" for name in self.cation_names[:self.K9]) + " SOMMA\n")
+                    # T-site occupancies
                     f17.write("T " + " ".join(f"{val:7.4f}" for val in X[:self.K9]) + f" {OCT:7.4f}\n")
-                    # errori T-site
+                    # T-site errors
                     f17.write("  " + " ".join(f"{val:7.4f}" for val in ERT) + "\n")
-                    # ripartizioni M-site
+                    # M-site occupancies
                     f17.write("M " + " ".join(f"{val:7.4f}" for val in X[self.K9:self.K9*2]) + f" {OCM:7.4f}\n")
-                    # errori M-site
+                    # M-site errors
                     f17.write("  " + " ".join(f"{val:7.4f}" for val in ERM) + "\n")
                     if FE25M >= 0.001:
                         f17.write(f" Fe2.5+: {FE25M:7.4f}  TOL (Marshall e Dollase) = {self.TOL:7.4f}\n")
                     if self.TOL > 98:
                         f17.write(" Non si vuole calcolare Fe2.5+ (TOL = 99)\n")
-                        # ripartizioni osservate
-                    f17.write("      " + " ".join(f"{name:7s}" for name in self.cation_names[:self.K9]) + " SOMMA\n")
+                        # Observed occupancies
                     f17.write(" obs " + " ".join(f"{val:7.4f}" for val in self.AT[:self.K9]) + f" {SUMAT:7.4f}\n")
-                    # ripartizioni calcolate
+                    # Calculated occupancies
                     f17.write(" cal " + " ".join(f"{val:7.4f}" for val in ATT[:self.K9]) + f" {SUMATT:7.4f}\n")
-                    # errori
+                    # Errors
                     f17.write(" sig " + " ".join(f"{val:7.4f}" for val in self.ERR[:self.K9]) + "\n")
                     kk = 7 + self.KAT
                     if self.IXN == 1:
-                        # Riepilogo calcolo elettroni
+                        # Electron calculation summary
                         f17.write(
                         f" Chi(i) quadro;{kk:2d} residui, compresi {self.KAT:2d} cationi >0.02\n"
                         "  eT       OccT     eM       OccM     A0       U        neut     chim\n"
@@ -434,7 +425,7 @@ class RipartoSpinelli:
                         f"{(SC[4]/self.SIGA)**2:9.2e} {(SC[5]/self.SIGU)**2:9.2e} {(SC[6]/self.SQ)**2:9.2e} {SC[7]:9.2e}\n"
                     )
                     elif self.IXN == 2:
-                # Riepilogo comprimibilità legame
+                # Bond compressibility summary
                         f17.write(
                             f" Chi(i) quadro;{kk:2d} residui, compresi {self.KAT:2d} cationi >0.02\n"
                             " BCT       OccT    BCM       OccM     A0       U        neut     chim\n"
@@ -462,29 +453,28 @@ class RipartoSpinelli:
                     f18.write(f" {self.ET0:7.3f} {self.EM0:7.3f} {self.A:8.5f} {self.U:8.5f} {self.SIGET:7.3f} {self.SIGEM:7.3f} {self.SIGA:8.5f} {self.SIGU:8.5f}\n")
 
 
- 
-                FR = [0.0] * (2 * self.K7)   # Array di output per le ripartizioni calcolate
-                FR0 = [0.0] * (2 * self.K7)  # Array di output per le ripartizioni iniziali
+                # ...existing code...
+                FR = [0.0] * (2 * self.K7)   # Output array for calculated occupancies
+                FR0 = [0.0] * (2 * self.K7)  # Output array for initial occupancies
 
                 for i in range(self.K7):
-                   # found = False
+                    found = False
                     for j in range(self.K9):
-                        # Confronta i nomi dopo aver rimosso gli spazi
+                        # Compare names after stripping spaces
                         if self.dis_names[i].strip() == self.cation_names[j].strip():
-                            # Sito T (primi K7)
+                            # T-site (first K7)
                             FR[i] = X[j]
                             FR0[i] = self.XXX[j]
-                            # Sito M (secondi K7)
+                            # M-site (second K7)
                             FR[i + self.K7] = X[j + self.K9]
                             FR0[i + self.K7] = self.XXX[j + self.K9]
-                           # found = True
+                            found = True
                             break
-                  #  if not found:
-                       # print(f"{self.dis_names[i]} NON TROVATA CORRISPONDENZA !")
-            
+                    if not found:
+                        print(f"{self.dis_names[i]} NON TROVATA CORRISPONDENZA !")
 
 
-                with open("FORXLS.OBS", "a+") as f16:
+                with open("FORXLS.OBS", "r+") as f16:
                     f16lines = f16.readlines()
                     KRIGHE = len(f16lines)
                     if KRIGHE == 0:
@@ -495,7 +485,7 @@ class RipartoSpinelli:
                             "".join([f"{val:8.4f}" for val in FR0[:30]]) + "\n")
 
                 # 4. FORXLS.CAL overwrite
-                with open("FORXLS.CAL", "a+") as f23:
+                with open("FORXLS.CAL", "r+") as f23:
                     f23lines = f23.readlines()
                     KRIGHE = len(f23lines)
                     if KRIGHE == 0:
@@ -509,7 +499,9 @@ class RipartoSpinelli:
                     self.aggiorna(X, input_file)
             return F
 
-
+        # --- Step 4: Output results (minimal, for now just return F) ---
+        # The full output logic (writing files) can be implemented as needed.
+        # For now, just return a dummy F for demonstration.
     def aggiorna(self, X, input_file='MINUIT.IN'):
         """
         Aggiorna il file MINUIT.IN (o altro specificato) con i dati correnti dell'oggetto.
@@ -520,6 +512,7 @@ class RipartoSpinelli:
             f.seek(0)
             f.write(f"{TIT}\n")
             TOT = np.sum(self.AT[:12])
+            print(f"Somma cationi = {TOT:.4f}")
 
             AMAX = np.zeros(self.K9)
             for i in range(self.K9):
@@ -562,8 +555,9 @@ class RipartoSpinelli:
             f.write(f"{self.ET:7.3f}{self.EM:7.3f}{self.A:9.5f}{self.U:10.6f}{self.SIGET:7.3f}{self.SIGEM:7.3f}{self.SIGA:9.5f}{self.SIGU:9.5f}\n")
             f.write(f"SigmaT  SigmaM  SigmaCar in ST, SM, SQ\n{self.ST:9.5f}{self.SM:9.5f}{self.SQ:9.5f}\n")
             f.write("\n")
-    
+            f.write("PRINTOUT        0.\nSIMPLEX     20000.\nMIGRAD      45000.   .000001   .000001\nIMPROVE\nCALL FCN        3.\nEXIT\n")
             f.truncate()
+        print("HO AGGIORNATO IL FILE MINUIT.IN")
 
 
 
